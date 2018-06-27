@@ -30,6 +30,7 @@ var Constants = require('./Constants.js');
 var Peer = require('./Peer.js');
 var EventHub = require('./EventHub.js');
 var Orderer = require('./Orderer.js');
+var ef= require('./efficient.js');
 
 var grpc = require('grpc');
 var _commonProto = grpc.load(__dirname + '/protos/common/common.proto').common;
@@ -92,6 +93,54 @@ module.exports.sendPeersProposal = function (peers, proposal, timeout) {
 	};
 	// create array of promises mapping peers array to peer parameter
 	// settle all the promises and return array of responses
+	const promises = targets.map(fn);
+	const responses = [];
+	return settle(promises).then(function (results) {
+		results.forEach(function (result) {
+			if (result.isFulfilled()) {
+				logger.debug('sendPeersProposal - Promise is fulfilled: ' +
+					result.value());
+				responses.push(result.value());
+			} else {
+				logger.debug('sendPeersProposal - Promise is rejected: ' +
+					result.reason());
+				if (result.reason() instanceof Error) {
+					responses.push(result.reason());
+				}
+				else {
+					responses.push(new Error(result.reason()));
+				}
+			}
+		});
+		return responses;
+	});
+};
+
+module.exports.sendPeersProposalEfficient = function (peers, proposal, timeout) {
+	console.log('***Calling sendPeersProposalEfficient***');
+	let targets = peers;
+	if (!Array.isArray(peers)) {
+		targets = [peers];
+	}
+	// make function to return an individual promise
+	const fn = function (peer) {
+		return new Promise(function (resolve, reject) {
+			peer.sendProposal(proposal, timeout).then(
+				function (result) {
+					resolve(result);
+				}
+			).catch(
+				function (err) {
+					logger.error('sendPeersProposal - Promise is rejected: %s',
+						err.stack ? err.stack : err);
+					return reject(err);
+				}
+			);
+		});
+	};
+	// create array of promises mapping peers array to peer parameter
+	// settle all the promises and return array of responses
+	ef.bestPeers(targets);
 	const promises = targets.map(fn);
 	const responses = [];
 	return settle(promises).then(function (results) {
