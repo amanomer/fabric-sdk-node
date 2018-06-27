@@ -44,6 +44,7 @@ function testLogger(t, ignoreLevels) {
 	log.warn('Test logger - warn');
 	log.info('Test logger - info');
 	log.debug('Test logger - debug');
+	log.prob('Test logger - prob');
 
 	unhook();
 
@@ -115,13 +116,15 @@ test('\n\n ** Logging utility tests - built-in logger **\n\n', function (t) {
 	log.warn('Test logger - warn');
 	log.info('Test logger - info');
 	log.debug('Test logger - debug');
+	log.prob('Test logger - prob');
 
 	unhook();
 
 	if (output.indexOf('Test logger - error') > 0 &&
 		output.indexOf('Test logger - warn') > 0 &&
 		output.indexOf('Test logger - info') > 0 &&
-		output.indexOf('Test logger - debug') > 0) {
+		output.indexOf('Test logger - debug') > 0 &&
+		output.indexOf('Test logger - prob') > 0 ){
 		t.pass('Successfully tested debug logger levels');
 	} else {
 		t.fail('Failed to test debug logger levels. All of info, warn and error message should have appeared in console');
@@ -129,7 +132,7 @@ test('\n\n ** Logging utility tests - built-in logger **\n\n', function (t) {
 
 	output = '';
 	// setup the environment
-	process.argv.push('--hfc-logging={"debug": "console"}');
+	process.argv.push('--hfc-logging={"debug": "console","prob": "file"}');
 	// internal call. clearing the cached config.
 	global.hfc.config = undefined;
 	// internal call. clearing the cached logger.
@@ -144,13 +147,14 @@ test('\n\n ** Logging utility tests - built-in logger **\n\n', function (t) {
 	log.warn('Test logger - warn');
 	log.info('Test logger - info');
 	log.debug('Test logger - debug');
-
+	log.prob('Test logger - prob');
 	unhook();
 
 	if (output.indexOf('Test logger - error') > 0 &&
 		output.indexOf('Test logger - warn') > 0 &&
 		output.indexOf('Test logger - info') > 0 &&
-		output.indexOf('Test logger - debug') > 0) {
+		output.indexOf('Test logger - debug') > 0 &&
+		output.indexOf('Test logger - prob') > 0){
 		t.pass('Successfully tested debug logger levels');
 	} else {
 		t.fail('Failed to test debug logger levels. All of info, warn and error message should have appeared in console');
@@ -172,12 +176,14 @@ test('\n\n ** Logging utility tests - built-in logger **\n\n', function (t) {
 		}
 	};
 
+	let probPath = path.join(testutil.getTempDir(), 'hfc-log/prob.log');
 	let debugPath = path.join(testutil.getTempDir(), 'hfc-log/debug.log');
 	let errorPath = path.join(testutil.getTempDir(), 'hfc-log/error.log');
+	prepareEmptyFile(probPath);
 	prepareEmptyFile(debugPath);
 	prepareEmptyFile(errorPath);
 
-	hfc.setConfigSetting('hfc-logging', util.format('{"debug": "%s", "error": "%s"}', debugPath, errorPath));
+	hfc.setConfigSetting('hfc-logging', util.format('{"prob":"%s", "debug": "%s", "error": "%s"}', probpath, debugPath, errorPath));
 	// internal call. clearing the cached logger.
 	global.hfc.logger = undefined;
 	var log1 = utils.getLogger('testlogger');
@@ -185,6 +191,7 @@ test('\n\n ** Logging utility tests - built-in logger **\n\n', function (t) {
 	log1.warn('Test logger - warn');
 	log1.info('Test logger - info');
 	log1.debug('Test logger - debug');
+	log1.prob('Test logger - prob');
 
 	setTimeout(function () {
 		var data = fs.readFileSync(debugPath);
@@ -192,7 +199,8 @@ test('\n\n ** Logging utility tests - built-in logger **\n\n', function (t) {
 		if (data.indexOf('Test logger - error') > 0 &&
 			data.indexOf('Test logger - warn') > 0 &&
 			data.indexOf('Test logger - info') > 0 &&
-			data.indexOf('Test logger - debug') > 0) {
+			data.indexOf('Test logger - debug') > 0 &&
+			data.indexOf('Test logger - prob') > 0){
 			t.pass('Successfully tested logging to debug file');
 		} else {
 			t.fail('Failed to validate content in debug log file');
@@ -203,7 +211,8 @@ test('\n\n ** Logging utility tests - built-in logger **\n\n', function (t) {
 		if (data.indexOf('Test logger - error') > 0) {
 			if (data.indexOf('Test logger - warn') > 0 ||
 				data.indexOf('Test logger - info') > 0 ||
-				data.indexOf('Test logger - debug') > 0) {
+				data.indexOf('Test logger - debug') > 0 ||
+				data.indexOf('Test logger - prob')) {
 				t.fail('Failed testing logging to error file, it should not contain any debug, info or warn messages.');
 			} else {
 				t.pass('Successfully tested logging to error file');
@@ -247,7 +256,8 @@ test('\n\n ** Logging utility tests - test setting an invalid external logger **
 		if (er1.indexOf('debug()') > 0 &&
 			er1.indexOf('info()') > 0 &&
 			er1.indexOf('warn()') > 0 &&
-			er1.indexOf('error()') > 0) {
+			er1.indexOf('error()') > 0 &&
+			er1.indexOf('prob()') > 0) {
 			t.pass('Successfully tested thrown error for an invalid logger to set on the HFC SDK');
 			t.end();
 		} else {

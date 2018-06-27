@@ -99,7 +99,7 @@ module.exports.newKeyValueStore = function(options) {
 	return Promise.resolve(new store(options));
 };
 
-const LOGGING_LEVELS = ['debug', 'info', 'warn', 'error'];
+const LOGGING_LEVELS = ['debug', 'info', 'warn', 'error', 'prob'];
 
 //
 // Internal API.
@@ -140,7 +140,7 @@ module.exports.getLogger = function(name) {
 	var insertLoggerName = function(originalLogger, lname) {
 		const logger = Object.assign({}, originalLogger);
 
-		['debug', 'info', 'warn', 'error'].forEach(function(method) {
+		['debug', 'info', 'warn', 'error', 'prob'].forEach(function(method) {
 			var func = originalLogger[method];
 
 			logger[method] = (function(context, loggerName, f) {
