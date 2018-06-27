@@ -509,6 +509,7 @@ function invokeChaincode(userOrg, version, chaincodeId, t, useStore){
 	init();
 
 	logger.debug('invokeChaincode begin');
+	logger.prob('invoke chaincode begin: ',Math.floor(Date.now()));
 	Client.setConfigSetting('request-timeout', 60000);
 	var channel_name = Client.getConfigSetting('E2E_CONFIGTX_CHANNEL_NAME', testUtil.END2END.channel);
 
