@@ -1459,100 +1459,11 @@ var Channel = class {
 		return Channel.sendTransactionProposal(request, this._name, this._clientContext, timeout);
 	}
 
-	sendTransactionProposalEfficient(request, timeout) {
-		console.log('***Calling sendtransactionProposalEfficient***');
-		logger.debug('sendTransactionProposal - start');
-
-		if (!request) {
-			throw new Error('Missing request object for this transaction proposal');
-		}
-		request.targets = this._getTargets(request.targets, Constants.NetworkConfig.ENDORSING_PEER_ROLE);
-
-		return Channel.sendTransactionProposalEfficient(request, this._name, this._clientContext, timeout);
-	}
 	/*
 	 * Internal static method to allow transaction proposals to be called without
 	 * creating a new channel
 	 */
 	static sendTransactionProposal(request, channelId, clientContext, timeout) {
-		// Verify that a Peer has been added
-		var errorMsg = clientUtils.checkProposalRequest(request);
-
-		if (errorMsg) {
-			// do nothing so we skip the rest of the checks
-		} else if (!request.args) {
-			// args is not optional because we need for transaction to execute
-			errorMsg = 'Missing "args" in Transaction proposal request';
-		} else if (!request.targets || request.targets.length < 1) {
-			errorMsg = 'Missing peer objects in Transaction proposal';
-		}
-
-		if (errorMsg) {
-			logger.error('sendTransactionProposal error ' + errorMsg);
-			throw new Error(errorMsg);
-		}
-
-		var args = [];
-		args.push(Buffer.from(request.fcn ? request.fcn : 'invoke', 'utf8'));
-		logger.debug('sendTransactionProposal - adding function arg:%s', request.fcn ? request.fcn : 'invoke');
-
-		for (let i = 0; i < request.args.length; i++) {
-			logger.debug('sendTransactionProposal - adding arg:%s', request.args[i]);
-			args.push(Buffer.from(request.args[i], 'utf8'));
-		}
-		//special case to support the bytes argument of the query by hash
-		if (request.argbytes) {
-			logger.debug('sendTransactionProposal - adding the argument :: argbytes');
-			args.push(request.argbytes);
-		}
-		else {
-			logger.debug('sendTransactionProposal - not adding the argument :: argbytes');
-		}
-		let invokeSpec = {
-			type: _ccProto.ChaincodeSpec.Type.GOLANG,
-			chaincode_id: {
-				name: request.chaincodeId
-			},
-			input: {
-				args: args
-			}
-		};
-
-		var proposal, header;
-		var signer = null;
-		if (request.signer) {
-			signer = request.signer;
-		} else {
-			signer = clientContext._getSigningIdentity(request.txId.isAdmin());
-		}
-		var channelHeader = clientUtils.buildChannelHeader(
-			_commonProto.HeaderType.ENDORSER_TRANSACTION,
-			channelId,
-			request.txId.getTransactionID(),
-			null,
-			request.chaincodeId,
-			clientUtils.buildCurrentTimestamp(),
-			request.targets[0].getClientCertHash()
-		);
-		header = clientUtils.buildHeader(signer, channelHeader, request.txId.getNonce());
-		proposal = clientUtils.buildProposal(invokeSpec, header, request.transientMap);
-		let signed_proposal = clientUtils.signProposal(signer, proposal);
-
-		return clientUtils.sendPeersProposal(request.targets, signed_proposal, timeout)
-			.then(
-				function (responses) {
-					return Promise.resolve([responses, proposal]);
-				}
-			).catch(
-				function (err) {
-					logger.error('Failed Proposal. Error: %s', err.stack ? err.stack : err);
-					return Promise.reject(err);
-				}
-			);
-	}
-
-	static sendTransactionProposalEfficient(request, channelId, clientContext, timeout) {
-		console.log('***Calling Channel.sendtransactionProposalEfficient***');
 		// Verify that a Peer has been added
 		var errorMsg = clientUtils.checkProposalRequest(request);
 
@@ -1825,61 +1736,6 @@ var Channel = class {
 		};
 
 		return this.sendTransactionProposal(trans_request)
-			.then(
-				function (results) {
-					var responses = results[0];
-					// var proposal = results[1];
-					logger.debug('queryByChaincode - results received');
-					if (responses && Array.isArray(responses)) {
-						let results = [];
-						for (let i = 0; i < responses.length; i++) {
-							let response = responses[i];
-							if (response instanceof Error) {
-								results.push(response);
-							}
-							else if (response.response && response.response.payload) {
-								results.push(response.response.payload);
-							}
-							else {
-								logger.error('queryByChaincode - unknown or missing results in query ::' + results);
-								results.push(new Error(response));
-							}
-						}
-						return Promise.resolve(results);
-					}
-					return Promise.reject(new Error('Payload results are missing from the chaincode query'));
-				}
-			).catch(
-				function (err) {
-					logger.error('Failed Query by chaincode. Error: %s', err.stack ? err.stack : err);
-					return Promise.reject(err);
-				}
-			);
-	}
-
-	queryByChaincodeEfficient(request, useAdmin){
-		console.log('***Calling queryByChaincodeEfficient***');
-		logger.debug('queryByChaincode - start');
-		if (!request) {
-			throw new Error('Missing request object for this queryByChaincode call.');
-		}
-
-		var targets = this._getTargets(request.targets, Constants.NetworkConfig.CHAINCODE_QUERY_ROLE);
-		var signer = this._clientContext._getSigningIdentity(useAdmin);
-		var txId = new TransactionID(signer, useAdmin);
-
-		// make a new request object so we can add in the txId and not change the user's
-		var trans_request = {
-			targets: targets,
-			chaincodeId: request.chaincodeId,
-			fcn: request.fcn,
-			args: request.args,
-			transientMap: request.transientMap,
-			txId: txId,
-			signer: signer
-		};
-		console.log('Sending transaction proposal');
-		return this.sendTransactionProposalEfficient(trans_request)
 			.then(
 				function (results) {
 					var responses = results[0];
