@@ -303,6 +303,10 @@ var EventHub = class {
 				logger.debug('on.data - incoming event was from a cancel stream');
 				return;
 			}
+			var txid;
+			for( let key in self._transactionOnEvents){
+				txid = key
+			}
 
 			var state = -1;
 			if(self._stream) state = self._stream.call.channel_.getConnectivityState();
@@ -312,10 +316,12 @@ var EventHub = class {
 				self._processBlockOnEvents(block);
 				self._processTxOnEvents(block);
 				self._processChainCodeOnEvents(block);
+				logger.verbose("tx_id:",txid,"peer:",self._ep._url,"stage: EventCompleted"," timestamp:",new Date().toISOString().replace('T',' ').substr(0,23))		
 			}
 			else if (event.Event == 'register'){
 				logger.debug('on.data - register event received');
 				self._connected = true;
+				logger.verbose("tx_id:",txid,"peer:",self._ep._url,"stage: EventStarted"," timestamp:",new Date().toISOString().replace('T',' ').substr(0,23))		
 			}
 			else if (event.Event == 'unregister'){
 				if(self._connected) self._disconnect(new Error('Peer event hub has disconnected due to an "unregister" event'));

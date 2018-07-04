@@ -30,7 +30,7 @@ var Constants = require('./Constants.js');
 var Peer = require('./Peer.js');
 var EventHub = require('./EventHub.js');
 var Orderer = require('./Orderer.js');
-var ef = require('./efficient.js');
+var efficient = require('./efficient.js');
 
 var grpc = require('grpc');
 var _commonProto = grpc.load(__dirname + '/protos/common/common.proto').common;
@@ -142,8 +142,8 @@ module.exports.sendPeersProposalEfficient = function (peers, proposal, timeout) 
 	// create array of promises mapping peers array to peer parameter
 	// settle all the promises and return array of responses
 	
-	let tar = targets;
-	ef.bestPeers(tar);
+	
+	efficient.bestPeers(targets);
 	const promises = targets.map(fn);
 	const responses = [];
 	return settle(promises).then(function (results) {
