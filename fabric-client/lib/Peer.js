@@ -110,7 +110,7 @@ var Peer = class extends Remote {
 		let rto = self._request_timeout;
 		var pb = proposal.proposal_bytes.toString();
 		var txid = pb.slice(pb.indexOf('@') + 1,pb.indexOf(':'))
-		logger.verbose("tx_id:",txid,"peer:",self._url,"stage: ProposalSent"," timestamp:",new Date().toISOString().replace('T',' ').substr(0,23))
+		logger.verbose("tx_id:",txid,",peer:",self._url,",stage: ProposalSent",",timestamp:",new Date().toISOString().replace('T',' ').substr(0,23))
 		if (typeof timeout === 'number')
 			rto = timeout;
 
@@ -140,7 +140,7 @@ var Peer = class extends Remote {
 				} else {
 					if (proposalResponse) {
 						logger.debug('Received proposal response from peer "%s": status - %s', self._url, proposalResponse.response.status);
-						logger.verbose("tx_id:",txid,"peer:",self._url,"stage: ProposalReceived"," timestamp:",new Date().toISOString().replace('T',' ').substr(0,23))
+						logger.verbose("tx_id:",txid,",peer:",self._url,",stage: ProposalReceived",",timestamp:",new Date().toISOString().replace('T',' ').substr(0,23))
 						resolve(proposalResponse);
 					} else {
 						logger.error('GRPC client failed to get a proper response from the peer "%s".', self._url);

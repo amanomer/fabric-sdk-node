@@ -1449,7 +1449,7 @@ var Channel = class {
 	 * @returns {Promise} A Promise for the {@link ProposalResponseObject}
 	 */
 	sendTransactionProposal(request, timeout) {
-		logger.verbose("tx_id:",request.txId._transaction_id,"stage: SendingProposal"," timestamp:",new Date().toISOString().replace('T',' ').substr(0,23));
+		logger.verbose("tx_id:",request.txId._transaction_id,",stage: TransactionStart",",timestamp:",new Date().toISOString().replace('T',' ').substr(0,23));
 		logger.debug('sendTransactionProposal - start');
 
 		if (!request) {

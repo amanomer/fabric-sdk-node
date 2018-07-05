@@ -88,7 +88,7 @@ var Orderer = class extends Remote {
 		var pb = envelope.payload.toString();
 		var txid = pb.slice(pb.indexOf('@') + 1,pb.indexOf(':'))
 		
-		logger.verbose("tx_id:",txid,"stage: OrdererBroadcast"," timestamp:",new Date().toISOString().replace('T',' ').substr(0,23))
+		logger.verbose("tx_id:",txid,",stage: OrdererBroadcast",",timestamp:",new Date().toISOString().replace('T',' ').substr(0,23))
 		if(!envelope || envelope == '') {
 			logger.debug('sendBroadcast ERROR - missing envelope');
 			var err = new Error('Missing data - Nothing to broadcast');

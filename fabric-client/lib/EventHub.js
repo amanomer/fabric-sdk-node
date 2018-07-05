@@ -294,7 +294,7 @@ var EventHub = class {
 		logger.debug('_connect - options %j', options);
 		this._event_client = new _events.Events(this._ep._endpoint.addr, this._ep._endpoint.creds, options);
 		this._stream = this._event_client.chat();
-
+		var txid;
 		this._stream.on('data', function(event) {
 			self._connect_running = false;
 			clearTimeout(send_timeout);
@@ -302,10 +302,6 @@ var EventHub = class {
 			if(stream_id != self._current_stream) {
 				logger.debug('on.data - incoming event was from a cancel stream');
 				return;
-			}
-			var txid;
-			for( let key in self._transactionOnEvents){
-				txid = key
 			}
 
 			var state = -1;
@@ -316,14 +312,18 @@ var EventHub = class {
 				self._processBlockOnEvents(block);
 				self._processTxOnEvents(block);
 				self._processChainCodeOnEvents(block);
-				logger.verbose("tx_id:",txid,"peer:",self._ep._url,"stage: EventCompleted"," timestamp:",new Date().toISOString().replace('T',' ').substr(0,23))		
+				logger.verbose("tx_id:",txid,",peer:",self._ep._url,",stage: EventCompleted",",timestamp:",new Date().toISOString().replace('T',' ').substr(0,23))		
 			}
 			else if (event.Event == 'register'){
+				for( let key in self._transactionOnEvents){
+					txid = key
+				}
 				logger.debug('on.data - register event received');
 				self._connected = true;
-				logger.verbose("tx_id:",txid,"peer:",self._ep._url,"stage: EventStarted"," timestamp:",new Date().toISOString().replace('T',' ').substr(0,23))		
+				logger.verbose("tx_id:",txid,",peer:",self._ep._url,",stage: EventStarted",",timestamp:",new Date().toISOString().replace('T',' ').substr(0,23))		
 			}
 			else if (event.Event == 'unregister'){
+				logger.verbose("tx_id:",txid,",stage: TransactionCompleted",",timestamp:",new Date().toISOString().replace('T',' ').substr(0,23))		
 				if(self._connected) self._disconnect(new Error('Peer event hub has disconnected due to an "unregister" event'));
 				logger.debug('on.data - unregister event received');
 			}
