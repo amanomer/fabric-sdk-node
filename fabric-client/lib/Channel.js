@@ -1460,6 +1460,19 @@ var Channel = class {
 		return Channel.sendTransactionProposal(request, this._name, this._clientContext, timeout);
 	}
 
+	sendTransactionProposalUpdate(request, timeout) {
+		logger.debug('sendTransactionProposal - start');
+
+		if (!request) {
+			throw new Error('Missing request object for this transaction proposal');
+		}
+		request.targets = this.getBestPeers(request.targets);
+		console.log("peers received");
+		console.log(request.targets)
+
+		return Channel.sendTransactionProposal(request, this._name, this._clientContext, timeout);
+	}
+
 	/*
 	 * Internal static method to allow transaction proposals to be called without
 	 * creating a new channel
@@ -1528,7 +1541,7 @@ var Channel = class {
 		proposal = clientUtils.buildProposal(invokeSpec, header, request.transientMap);
 		let signed_proposal = clientUtils.signProposal(signer, proposal);
 
-		return clientUtils.sendPeersProposalEfficient(request.targets, signed_proposal, timeout)
+		return clientUtils.sendPeersProposal(request.targets, signed_proposal, timeout)
 			.then(
 				function (responses) {
 					return Promise.resolve([responses, proposal]);
@@ -1769,6 +1782,60 @@ var Channel = class {
 			);
 	}
 
+	queryByChaincodeUpdate(request, useAdmin) {
+		console.log('queryByChaincode - start');
+		if (!request) {
+			throw new Error('Missing request object for this queryByChaincode call.');
+		}
+
+		var targets = this.getBestPeers(request.targets, Constants.NetworkConfig.ENDORSING_PEER_ROLE);
+		var signer = this._clientContext._getSigningIdentity(useAdmin);
+		var txId = new TransactionID(signer, useAdmin);
+
+		// make a new request object so we can add in the txId and not change the user's
+		var trans_request = {
+			targets: targets,
+			chaincodeId: request.chaincodeId,
+			fcn: request.fcn,
+			args: request.args,
+			transientMap: request.transientMap,
+			txId: txId,
+			signer: signer
+		};
+
+		return Channel.sendTransactionProposal(trans_request, this._name, this._clientContext)
+			.then(
+				function (results) {
+					var responses = results[0];
+					// var proposal = results[1];
+					logger.debug('queryByChaincode - results received');
+					if (responses && Array.isArray(responses)) {
+						let results = [];
+						for (let i = 0; i < responses.length; i++) {
+							let response = responses[i];
+							if (response instanceof Error) {
+								results.push(response);
+							}
+							else if (response.response && response.response.payload) {
+								results.push(response.response.payload);
+							}
+							else {
+								logger.error('queryByChaincode - unknown or missing results in query ::' + results);
+								results.push(new Error(response));
+							}
+						}
+						return Promise.resolve(results);
+					}
+					return Promise.reject(new Error('Payload results are missing from the chaincode query'));
+				}
+			).catch(
+				function (err) {
+					logger.error('Failed Query by chaincode. Error: %s', err.stack ? err.stack : err);
+					return Promise.reject(err);
+				}
+			);
+	}
+
 	/**
 	 * Utility method to verify a single proposal response. It checks the
 	 * following aspects:
@@ -1879,9 +1946,97 @@ var Channel = class {
 		return true;
 	}
 
+	getOrgs(peers){
+		var orgs = [];
+		peers.forEach((peer)=>{
+			var found = 0;
+			var org = peer.getOrg();
+			if(!org){
+				console.log("Organization in not set for peer having url: %s",peer.getUrl());
+				return;
+			}
+			if(orgs.length > 0){
+				orgs.forEach((value)=>{
+					if(value === org){
+						found = 1;
+					}
+				});
+			}
+			if(found === 0){
+				orgs.push(org);
+			}
+		});
+		return orgs;
+	}
+
+	getPeersForOrg(org /*string*/){
+		var peers_for_org = [];
+		var allPeers = this.getPeers();
+		allPeers.forEach((peer)=>{
+			if(peer.getOrg() === org){
+				peers_for_org.push(peer);
+			}
+		})
+		return peers_for_org;
+
+	}
+	//Wrapper method for all added utility
+	getBestPeers(peers , role){
+		let u_peers;
+		if(role === Constants.NetworkConfig.ENDORSING_PEER_ROLE){
+			u_peers=this._getBestEndorsingPeer(peers);
+		}
+		else if(role === Constants.NetworkConfig.EVENT_SOURCE_ROLE){
+			u_peers = this._getBestPeerForEvents(peers);
+		}
+		else{
+			u_peers= this._getBestTargetsForInvoke(peers);
+		}
+
+		return u_peers;
+	}
+
+	_getBestTargetsForInvoke(peer){
+		var peers = this._getTargets(peer, Constants.NetworkConfig.ENDORSING_PEER_ROLE, true);
+		var orgs = this.getOrgs(peers);
+		if(!orgs){
+			return peers;
+		}
+		var u_peers = [];
+		orgs.forEach((org)=>{
+			var b_peer= clientUtils.discoverBestPeer(this.getPeersForOrg(org));
+			if(b_peer){
+				u_peers.push(b_peer[0]);
+			}
+			else{
+				throw new Error('Unexpected result from discoverBestPeer(EVENT_SOURCE_ROLE).')
+			}
+		});
+		//console.log(u_peers);
+		return u_peers;
+	}
+
 	/*
 	 *  utility method to decide on the peer for events
 	 */
+	_getBestPeerForEvents(peer){
+		var peers = this._getTargets(peer, Constants.NetworkConfig.EVENT_SOURCE_ROLE, true);
+		// only want to return one peer
+		if (peers && peers.length > 1) {
+			var b_peer= clientUtils.discoverBestPeer(peers, Constants.NetworkConfig.EVENT_SOURCE_ROLE);
+			if(b_peer){
+				return [b_peer[0]];
+			}
+			else{
+				throw new Error('Unexpected result from discoverBestPeer(EVENT_SOURCE_ROLE).')
+			}
+		}
+		else if(peers && peers.length > 0){
+			return [peers[0]];
+		}
+		throw new Error('No Peers available to be an event source');
+	}
+
 	_getPeerForEvents(peer) {
 		if (!peer) {
 			throw new Error('"peer" parameter is missing');
@@ -1910,6 +2065,26 @@ var Channel = class {
 		}
 
 		return targets;
+	}
+	
+	_getBestEndorsingPeer(peer) {
+		console.log('Get Best Endorsing Peer');
+		var peers = this._getTargets(peer, Constants.NetworkConfig.ENDORSING_PEER_ROLE, true);
+		// only want to return one peer
+		if (peers && peers.length > 1) {
+			var b_peer= clientUtils.discoverBestPeer(peers, Constants.NetworkConfig.ENDORSING_PEER_ROLE);
+			if(b_peer){
+				return [b_peer[0]];
+			}
+			else{
+				throw new Error('Unexpected result from discoverBestPeer(ENDORSING_PEER_ROLE).')
+			}
+		}
+		else if(peers && peers.length > 0){
+			console.log("Only one peer have been passed.")
+			return [peers[0]];
+		}
+		throw new Error('No Peers available for endorsing.');
 	}
 
 	/*
@@ -1987,6 +2162,7 @@ var Channel = class {
 				//first get all the peers on the channel divided up by orgs
 				var peers_by_org = {};
 				for (let i in orgs) {
+					var targets=[];
 					let org = orgs[i];
 					var peers_in_org_and_in_channel = [];
 					peers_by_org[org.getName()] = peers_in_org_and_in_channel;
@@ -2009,6 +2185,7 @@ var Channel = class {
 							if (channel_peer.getName() === org_peer.getName()) {
 								// only peers in the request role get added
 								if (channel_peer.isInRole(role)) {
+									channel_peer.setOrg(org.getName());
 									peers_in_org_and_in_channel.push(channel_peer);
 									logger.debug('%s - added peer %s', method, channel_peer.toString());
 								}
@@ -2018,7 +2195,7 @@ var Channel = class {
 					}
 				}
 				// now add just one peer from each org to targets if in role
-				for (let org_name in peers_by_org) {
+				/*for (let org_name in peers_by_org) {
 					let peers_org = peers_by_org[org_name];
 					if (peers_org && peers_org.length > 0) {
 						logger.debug('%s - orgs %s has %s peers', method, org_name, peers_org.length);
@@ -2030,7 +2207,8 @@ var Channel = class {
 					} else {
 						logger.debug('%s - no peers in this org %s', method, org_name);
 					}
-				}
+				}*/
+				targets.push(eers_by_org);
 			}
 
 			if (targets.length == 0) {

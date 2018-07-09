@@ -55,6 +55,7 @@ var Remote = class {
 	 */
 	constructor(url, opts) {
 		var _name = null;
+		var _org = null;
 		var pem = null;
 		var clientKey = null;
 		this.clientCert = null;
@@ -148,6 +149,15 @@ var Remote = class {
 	 */
 	setName(name) {
 		this._name = name;
+	}
+
+	setOrg(name /*String*/){
+		this._org = name;
+
+	}
+
+	getOrg(){
+		return this._org; 
 	}
 
 	/**
