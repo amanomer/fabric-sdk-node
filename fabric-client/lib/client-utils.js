@@ -30,7 +30,6 @@ var Constants = require('./Constants.js');
 var Peer = require('./Peer.js');
 var EventHub = require('./EventHub.js');
 var Orderer = require('./Orderer.js');
-var efficient = require('./efficient.js');
 
 var grpc = require('grpc');
 var _commonProto = grpc.load(__dirname + '/protos/common/common.proto').common;
@@ -102,58 +101,7 @@ module.exports.sendPeersProposal = function (peers, proposal, timeout) {
 					result.value());
 				responses.push(result.value());
 			} else {
-				logger.debug('sendPeersProposal - Promise is rejected: ' +
-					result.reason());
-				if (result.reason() instanceof Error) {
-					responses.push(result.reason());
-				}
-				else {
-					responses.push(new Error(result.reason()));
-				}
-			}
-		});
-		return responses;
-	});
-};
-
-
-module.exports.sendPeersProposalEfficient = function (peers, proposal, timeout) {
-	console.log('***Calling sendPeersProposalEfficient***');
-	let targets = peers;
-	if (!Array.isArray(peers)) {
-		targets = [peers];
-	}
-	// make function to return an individual promise
-	const fn = function (peer) {
-		return new Promise(function (resolve, reject) {
-			peer.sendProposal(proposal, timeout).then(
-				function (result) {
-					resolve(result);
-				}
-			).catch(
-				function (err) {
-					logger.error('sendPeersProposal - Promise is rejected: %s',
-						err.stack ? err.stack : err);
-					return reject(err);
-				}
-			);
-		});
-	};
-	// create array of promises mapping peers array to peer parameter
-	// settle all the promises and return array of responses
-	
-	
-	efficient.bestPeers(targets);
-	const promises = targets.map(fn);
-	const responses = [];
-	return settle(promises).then(function (results) {
-		results.forEach(function (result) {
-			if (result.isFulfilled()) {
-				logger.debug('sendPeersProposal - Promise is fulfilled: ' +
-					result.value());
-				responses.push(result.value());
-			} else {
-				logger.debug('sendPeersProposal - Promise is rejected: ' +
+				console.log('sendPeersProposal - Promise is rejected: ' +
 					result.reason());
 				if (result.reason() instanceof Error) {
 					responses.push(result.reason());
@@ -289,4 +237,78 @@ module.exports.buildCurrentTimestamp = function () {
 	timestamp.setSeconds(now.getTime() / 1000);
 	timestamp.setNanos((now.getTime() % 1000) * 1000000);
 	return timestamp;
+};
+//returns list of peers, which is sorted rankwise. At index 0, there will be identifier of peer.
+
+module.exports.discoverBestPeer = function (peers ,role) {
+	let targets = peers;
+	if (!Array.isArray(peers)) {
+		targets = [peers];
+	}
+	const getIdentifier = function(peer){
+		if (peer.getName()){
+			return peer.getName();
+		}
+		else if(peer.getUrl()){
+			return peer.getUrl();
+		}
+		else {
+			throw new Error('Peer identifier(Name & URL) is missing');
+		}
+	}
+
+	const getPeerinstance = function(peer){
+		targets.forEach((target)=>{
+			if(peer === target.getUrl()){
+				return target;
+			}
+			if(peer === target.getName()){
+				return target;
+			}
+		});
+	}
+
+	if(targets && targets.length > 1){
+		var peerList = [];
+		targets.forEach((peer)=>{
+			peerList.push(getIdentifier(peer));
+		});
+		var u_peerList;
+		if(role === Constants.NetworkConfig.EVENT_SOURCE_ROLE){
+			//u_peerList=callModel(peerList , Constants.NetworkConfig.EVENT_SOURCE_ROLE);
+			u_peerList= peerList;
+		}
+		else if(role === Constants.NetworkConfig.ENDORSING_PEER_ROLE){
+			//u_peerList=callModel(peerList , Constants.NetworkConfig.ENDORSING_PEER_ROLE);
+			u_peerList= peerList;
+		}
+		else {
+			u_peerList= peerList;
+			//u_peerList=callModel(peerList);
+		}
+		if(!u_peerList || u_peerList.length < 1){
+			throw new Error('Unexpected results from analytical model');
+		}
+		let u_peers = null;
+		u_peers = [];
+		u_peerList.forEach((peer)=>{
+			targets.forEach((target)=>{
+				if(peer === target.getUrl()){
+					u_peers.push(target);
+				}
+				if(peer === target.getName()){
+					u_peers.push(target);
+				}
+			});
+		})
+		return u_peers;
+	}
+	else if(targets.length > 0 ){ //Only one peer is passed
+		console.log('only one peer is passed')
+		return targets;
+	}
+	else {
+		throw new Error('Unexpected value of peerList is received.');
+	}
+
 };
