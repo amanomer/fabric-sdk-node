@@ -1544,6 +1544,7 @@ var Channel = class {
 		return clientUtils.sendPeersProposal(request.targets, signed_proposal, timeout)
 			.then(
 				function (responses) {
+					logger.verbose("tx_id:",request.txId._transaction_id,",stage: payloadsize",",bytes:",proposal.payload.buffer.byteLength);
 					return Promise.resolve([responses, proposal]);
 				}
 			).catch(
