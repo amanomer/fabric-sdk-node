@@ -30,6 +30,7 @@ var Constants = require('./Constants.js');
 var Peer = require('./Peer.js');
 var EventHub = require('./EventHub.js');
 var Orderer = require('./Orderer.js');
+var model = require('./StatisticalModel');
 
 var grpc = require('grpc');
 var _commonProto = grpc.load(__dirname + '/protos/common/common.proto').common;
@@ -101,7 +102,7 @@ module.exports.sendPeersProposal = function (peers, proposal, timeout) {
 					result.value());
 				responses.push(result.value());
 			} else {
-				console.log('sendPeersProposal - Promise is rejected: ' +
+				logger.debug('sendPeersProposal - Promise is rejected: ' +
 					result.reason());
 				if (result.reason() instanceof Error) {
 					responses.push(result.reason());
@@ -238,77 +239,91 @@ module.exports.buildCurrentTimestamp = function () {
 	timestamp.setNanos((now.getTime() % 1000) * 1000000);
 	return timestamp;
 };
-//returns list of peers, which is sorted rankwise. At index 0, there will be identifier of peer.
 
+/*
+* Returns a list of peers, which is sorted rankwise.
+* This rank is calculated by statistical model which uses 
+* the data recorded from previous transaction. 
+* 
+* @param {Peer[]} peers - List of Peer instances which is to be ranked.
+* @param {String} role - Optional - Role for which peers ranking will be done. 
+* If not specified, peers will be ranked on both EVENT_SOURCE_ROLE and ENDORSING_PEER_ROLE.
+*
+* @returns {Peer[]} - At index 0, there will be best performing peer.
+*/
 module.exports.discoverBestPeer = function (peers ,role) {
 	let targets = peers;
 	if (!Array.isArray(peers)) {
 		targets = [peers];
 	}
+	// Function to return URL of peer.
+	// Model identifies the peer by it's URL.
 	const getIdentifier = function(peer){
-		if (peer.getName()){
-			return peer.getName();
-		}
-		else if(peer.getUrl()){
+		if(peer.getUrl()){
 			return peer.getUrl();
 		}
 		else {
-			throw new Error('Peer identifier(Name & URL) is missing');
+			throw new Error('Peer URL is missing');
 		}
 	}
 
-	const getPeerinstance = function(peer){
-		targets.forEach((target)=>{
-			if(peer === target.getUrl()){
-				return target;
-			}
-			if(peer === target.getName()){
-				return target;
-			}
-		});
-	}
-
+	// targets are present and number of targets are greater than 1.
 	if(targets && targets.length > 1){
+		// Making list of URLs.
 		var peerList = [];
 		targets.forEach((peer)=>{
 			peerList.push(getIdentifier(peer));
 		});
+
 		var u_peerList;
-		if(role === Constants.NetworkConfig.EVENT_SOURCE_ROLE){
-			//u_peerList=callModel(peerList , Constants.NetworkConfig.EVENT_SOURCE_ROLE);
-			u_peerList= peerList;
-		}
-		else if(role === Constants.NetworkConfig.ENDORSING_PEER_ROLE){
-			//u_peerList=callModel(peerList , Constants.NetworkConfig.ENDORSING_PEER_ROLE);
-			u_peerList= peerList;
-		}
-		else {
-			u_peerList= peerList;
-			//u_peerList=callModel(peerList);
-		}
-		if(!u_peerList || u_peerList.length < 1){
-			throw new Error('Unexpected results from analytical model');
-		}
+		try {
+			// Rank peers for listening event.
+			if(role === Constants.NetworkConfig.EVENT_SOURCE_ROLE) {
+				u_peerList = model.runModel(peerList, Constants.NetworkConfig.EVENT_SOURCE_ROLE);
+			}
+			// Rank peers for Query.
+			else if(role === Constants.NetworkConfig.ENDORSING_PEER_ROLE) {
+				u_peerList = model.runModel(peerList, Constants.NetworkConfig.ENDORSING_PEER_ROLE);
+			}
+			// Rank peers for Invoke.
+			// If no role is specified, peer which has performed best for endorsement 
+			// And in event listening will be ranked highest.
+			else {
+				u_peerList = model.runModel(peerList );
+			}
+			// No value received.
+			if(!u_peerList || u_peerList.length < 1){
+				logger.debug("Unexpected results from model.");
+				logger.debug("Returning peer list as received to continue transaction flow");
+				u_peerList = peerList;
+			}
+		  } catch (err) {
+			logger.debug("Peer list passed to model:",peerList);
+			logger.error("Failed to run model",err);
+			// For unintruppted transaction flow.
+			u_peerList = peerList;
+		  }
 		let u_peers = null;
 		u_peers = [];
+		// Pushing the peer instance to the list
 		u_peerList.forEach((peer)=>{
 			targets.forEach((target)=>{
 				if(peer === target.getUrl()){
-					u_peers.push(target);
-				}
-				if(peer === target.getName()){
 					u_peers.push(target);
 				}
 			});
 		})
 		return u_peers;
 	}
-	else if(targets.length > 0 ){ //Only one peer is passed
-		console.log('only one peer is passed')
+	else if(targets.length > 0 ){ 
+		// Peer list is having single peer.
+		// So ranking it will not be effective.
+		// Returning that same peer.
 		return targets;
 	}
 	else {
-		throw new Error('Unexpected value of peerList is received.');
+		// No peers have been passed.
+		throw new Error('Parameter peers should not be null or empty.');
 	}
 
 };

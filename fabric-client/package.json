@@ -38,6 +38,8 @@
     "restify": "6.3.4",
     "sjcl": "1.0.7",
     "stream-buffers": "3.0.1",
+    "string": "3.3.3",
+    "sync-exec": "0.6.2",
     "tar-stream": "1.5.2",
     "url": "^0.11.0",
     "util": "^0.10.3",

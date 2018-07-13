@@ -1460,15 +1460,18 @@ var Channel = class {
 		return Channel.sendTransactionProposal(request, this._name, this._clientContext, timeout);
 	}
 
+	/*
+	 * In sendTransactionProposalUpdate(), getBestPeers() is consuming ranked peers for Endorsement role and Event Source role.
+	 * Rest of the implementation is same as queryByChaincode().
+	 */
 	sendTransactionProposalUpdate(request, timeout) {
+		logger.verbose("tx_id:",request.txId._transaction_id,",stage: TransactionStart",",timestamp:",new Date().toISOString().replace('T',' ').substr(0,23));
 		logger.debug('sendTransactionProposal - start');
 
 		if (!request) {
 			throw new Error('Missing request object for this transaction proposal');
 		}
 		request.targets = this.getBestPeers(request.targets);
-		console.log("peers received");
-		console.log(request.targets)
 
 		return Channel.sendTransactionProposal(request, this._name, this._clientContext, timeout);
 	}
@@ -1544,10 +1547,12 @@ var Channel = class {
 		return clientUtils.sendPeersProposal(request.targets, signed_proposal, timeout)
 			.then(
 				function (responses) {
+					logger.verbose("tx_id:",request.txId._transaction_id,",stage: TransactionEndForQueryTransaction",",timestamp:",new Date().toISOString().replace('T',' ').substr(0,23));
 					return Promise.resolve([responses, proposal]);
 				}
 			).catch(
 				function (err) {
+					logger.verbose("tx_id:",request.txId._transaction_id,",stage: TransactionEndForQueryTransaction",",timestamp:",new Date().toISOString().replace('T',' ').substr(0,23));
 					logger.error('Failed Proposal. Error: %s', err.stack ? err.stack : err);
 					return Promise.reject(err);
 				}
@@ -1782,12 +1787,16 @@ var Channel = class {
 			);
 	}
 
+	/*
+	 * In queryByChaincodeUpdate(), getBestPeers() is consuming ranked peers for Endorsement Role.
+	 * Rest of the implementation is same as queryByChaincode().
+	 */
 	queryByChaincodeUpdate(request, useAdmin) {
-		console.log('queryByChaincode - start');
+		logger.debug('queryByChaincodeUpdate - start');
 		if (!request) {
 			throw new Error('Missing request object for this queryByChaincode call.');
 		}
-
+		// Requesting best peers for Endorsement.
 		var targets = this.getBestPeers(request.targets, Constants.NetworkConfig.ENDORSING_PEER_ROLE);
 		var signer = this._clientContext._getSigningIdentity(useAdmin);
 		var txId = new TransactionID(signer, useAdmin);
@@ -1946,14 +1955,19 @@ var Channel = class {
 		return true;
 	}
 
+	/*
+	 * Utility method for getting organization name of peers.
+	 * 
+	 * @param {[Peer]} - List of peer instances.
+	 * @return {String} - The list of distinct organizations in array of String.
+	 */
 	getOrgs(peers){
 		var orgs = [];
 		peers.forEach((peer)=>{
 			var found = 0;
 			var org = peer.getOrg();
 			if(!org){
-				console.log("Organization in not set for peer having url: %s",peer.getUrl());
-				return;
+				logger.error("Organization needs to be specified for peer having URL: %s",peer.getUrl());
 			}
 			if(orgs.length > 0){
 				orgs.forEach((value)=>{
@@ -1969,32 +1983,59 @@ var Channel = class {
 		return orgs;
 	}
 
-	getPeersForOrg(org /*string*/){
+	/* 
+	 * Utility Method which will gives list of Peer in organization.
+	 * This method uses the Channel#getPeers() for loading peers.
+	 * @param {String} org_name - Name of an organization.
+	 * @return {[Peer]} - Peers in organization specified in 'org'.
+	 */
+	getPeersForOrg(org_name){
 		var peers_for_org = [];
 		var allPeers = this.getPeers();
 		allPeers.forEach((peer)=>{
-			if(peer.getOrg() === org){
+			if(peer.getOrg() === org_name){
 				peers_for_org.push(peer);
 			}
 		})
+		if(!peers_for_org){
+			logger.error("No peers for organization %s",org_name);
+		}
 		return peers_for_org;
 
 	}
-	//Wrapper method for all added utility
-	getBestPeers(peers , role){
+
+	/* 
+	 * Wrapper method for all added utility.
+	 * Returns consistenly performing Peer(s) for role.
+	 * 
+	 * @param {[Peer]} peers - If null then it load peers from channel instance of specified role.
+	 * @param {String} role -Optional- Peers of role specified here will be passed.
+	 * @return {[Peer]} - A list of peers sorted according to their rank for specified role.
+	 * If not specified, this will contain the ranked peer on both roles. 
+	 * List will contain 1 peer when role is specified else it will have best performing peer from each organization.
+	 */
+	getBestPeers(peers, role){
 		let u_peers;
 		if(role === Constants.NetworkConfig.ENDORSING_PEER_ROLE){
-			u_peers=this._getBestEndorsingPeer(peers);
+			u_peers = this._getBestEndorsingPeer(peers);
 		}
 		else if(role === Constants.NetworkConfig.EVENT_SOURCE_ROLE){
 			u_peers = this._getBestPeerForEvents(peers);
 		}
 		else{
-			u_peers= this._getBestTargetsForInvoke(peers);
-		}
-
+			u_peers = this._getBestTargetsForInvoke(peers);
+		} 
 		return u_peers;
 	}
+
+	/*
+	 * For getting the consistenly performing peer for invoke transaction.
+	 * Peers used for invoke must be performing well in endorsing as well as event generation phases.
+	 * 
+	 * @param {[Peer]} - Optional - Uses _getTargets() for loading peers if not passed.
+	 * @return {[Peer]} - Peers will be ranked.
+	 *  
+	 */
 
 	_getBestTargetsForInvoke(peer){
 		var peers = this._getTargets(peer, Constants.NetworkConfig.ENDORSING_PEER_ROLE, true);
@@ -2002,39 +2043,96 @@ var Channel = class {
 		if(!orgs){
 			return peers;
 		}
-		var u_peers = [];
-		orgs.forEach((org)=>{
-			var b_peer= clientUtils.discoverBestPeer(this.getPeersForOrg(org));
-			if(b_peer){
-				u_peers.push(b_peer[0]);
-			}
-			else{
-				throw new Error('Unexpected result from discoverBestPeer(EVENT_SOURCE_ROLE).')
-			}
-		});
-		//console.log(u_peers);
-		return u_peers;
+		if(peers & peers.length >1){
+			var u_peers = [];
+			orgs.forEach((org)=>{
+				var peer_for_org = this.getPeersForOrg(org);
+				try{
+					var b_peer= clientUtils.discoverBestPeer(peer_for_org);
+					if(b_peer){
+						// Adding peer of rank 1.
+						u_peers.push(b_peer[0]);
+					}
+					else{
+						logger.error("Peers received by client-utils#discoverBestPeer() does not matches with the Peers which was passed");
+					}
+				} catch(err){
+					// Choosing a peer from class instance.
+					u_peers.push(peer_for_org[0]);
+					logger.error("Error from client-utils#discoverBestPeer(): %s",err);
+				}
+			});
+			return u_peers;
+		}
+		if(peers & peers.length>0){
+			return peers[0];
+		}
+		else{
+			throw new Error('No Peers available');
+		}
 	}
 
 	/*
-	 *  utility method to decide on the peer for events
+	 * For getting the consistenly performing peer as Event Source.
+	 * 
+	 * @param {[Peer]} - Optional - Uses _getTargets() for loading peers if not passed.
+	 * @return {[Peer]} - Length is 0. Only best performing peer.
 	 */
 	_getBestPeerForEvents(peer){
 		var peers = this._getTargets(peer, Constants.NetworkConfig.EVENT_SOURCE_ROLE, true);
 		// only want to return one peer
 		if (peers && peers.length > 1) {
-			var b_peer= clientUtils.discoverBestPeer(peers, Constants.NetworkConfig.EVENT_SOURCE_ROLE);
-			if(b_peer){
-				return [b_peer[0]];
-			}
-			else{
-				throw new Error('Unexpected result from discoverBestPeer(EVENT_SOURCE_ROLE).')
+			try{
+				var b_peer= clientUtils.discoverBestPeer(peers, Constants.NetworkConfig.EVENT_SOURCE_ROLE);
+				if(b_peer){
+					// Choose the best performing peer.
+					return [b_peer[0]];
+				}
+				else{
+					logger.error("Peers received by client-utils#discoverBestPeer() is empty.");
+				}
+			} catch (err){
+				// Returning a peer.
+				return peers[0];
+				logger.error("Error from client-utils#discoverBestPeer(): %s",err);
 			}
 		}
 		else if(peers && peers.length > 0){
 			return [peers[0]];
 		}
 		throw new Error('No Peers available to be an event source');
+	}
+
+	/*
+	 * For getting the consistenly performing peer as Event Source.
+	 * 
+	 * @param {[Peer]} - Optional - Uses _getTargets() for loading peers if not passed.
+	 * @return {[Peer]} - Length is 0. Only best performing peer.
+	 */
+	_getBestEndorsingPeer(peer) {
+		console.log('Get Best Endorsing Peer');
+		var peers = this._getTargets(peer, Constants.NetworkConfig.ENDORSING_PEER_ROLE, true);
+		// only want to return one peer
+		if (peers && peers.length > 1) {
+			try{
+				var b_peer= clientUtils.discoverBestPeer(peers, Constants.NetworkConfig.ENDORSING_PEER_ROLE);
+				if(b_peer){
+					// Choose the best performing peer.
+					return [b_peer[0]];
+				}
+				else{
+					logger.error("Peers received by client-utils#discoverBestPeer() is empty.");
+				}
+			} catch(err){
+				// Returning a peer.
+				u_peers.push(peers[0]);
+				logger.error("Error from client-utils#discoverBestPeer(): %s",err);
+			}
+		}
+		else if(peers && peers.length > 0){
+			return [peers[0]];
+		}
+		throw new Error('No Peers available for endorsing.');
 	}
 
 	_getPeerForEvents(peer) {
@@ -2065,26 +2163,6 @@ var Channel = class {
 		}
 
 		return targets;
-	}
-	
-	_getBestEndorsingPeer(peer) {
-		console.log('Get Best Endorsing Peer');
-		var peers = this._getTargets(peer, Constants.NetworkConfig.ENDORSING_PEER_ROLE, true);
-		// only want to return one peer
-		if (peers && peers.length > 1) {
-			var b_peer= clientUtils.discoverBestPeer(peers, Constants.NetworkConfig.ENDORSING_PEER_ROLE);
-			if(b_peer){
-				return [b_peer[0]];
-			}
-			else{
-				throw new Error('Unexpected result from discoverBestPeer(ENDORSING_PEER_ROLE).')
-			}
-		}
-		else if(peers && peers.length > 0){
-			console.log("Only one peer have been passed.")
-			return [peers[0]];
-		}
-		throw new Error('No Peers available for endorsing.');
 	}
 
 	/*
