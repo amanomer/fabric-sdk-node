@@ -1548,6 +1548,7 @@ var Channel = class {
 			.then(
 				function (responses) {
 					logger.verbose("tx_id:",request.txId._transaction_id,",stage: TransactionEndForQueryTransaction",",timestamp:",new Date().toISOString().replace('T',' ').substr(0,23));
+					logger.verbose("tx_id:",request.txId._transaction_id,",stage: payloadsize",",bytes:",proposal.payload.buffer.byteLength);
 					return Promise.resolve([responses, proposal]);
 				}
 			).catch(
